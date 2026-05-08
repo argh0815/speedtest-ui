@@ -5,6 +5,12 @@ use std::process::{Command, Stdio};
 use std::thread;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[tauri::command]
 async fn run_speedtest(app: AppHandle) -> Result<bool, String> {
     let binary_name = if cfg!(target_os = "windows") {
@@ -20,16 +26,23 @@ async fn run_speedtest(app: AppHandle) -> Result<bool, String> {
         .resolve(dbg!(binary_path), BaseDirectory::Resource)
         .map_err(|e| format!("Failed to resolve resource path: {}", e))?;
 
-    let mut child = Command::new(command_path)
+    let mut command = Command::new(command_path);
+
+    command
         .arg("--accept-license")
         .arg("--format=json")
         .arg("--progress=yes")
         .arg("--unit=B/s")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+        .stderr(Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = command.spawn().map_err(|e| e.to_string())?;
 
     let stdout = child
         .stdout
